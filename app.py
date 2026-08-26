@@ -1,8 +1,10 @@
 import os
+import io
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from openai import OpenAI
 from dotenv import load_dotenv
+from pypdf import PdfReader
 
 load_dotenv()
 
@@ -16,8 +18,54 @@ client = OpenAI(
 
 @app.route("/")
 def home():
-    # Serves the frontend UI from templates/index.html
     return render_template("index.html")
+
+@app.route("/upload-document", methods=["POST"])
+def upload_document():
+    """Extract text from uploaded PDF or TXT file."""
+    try:
+        if "file" not in request.files:
+            return jsonify({"error": "No file uploaded"}), 400
+
+        file = request.files["file"]
+        if file.filename == "":
+            return jsonify({"error": "No file selected"}), 400
+
+        filename = file.filename.lower()
+        extracted_text = ""
+        page_count = 1
+
+        if filename.endswith(".pdf"):
+            pdf_stream = io.BytesIO(file.read())
+            reader = PdfReader(pdf_stream)
+            page_count = len(reader.pages)
+            
+            pages_text = []
+            for i, page in enumerate(reader.pages):
+                text = page.extract_text() or ""
+                if text.strip():
+                    pages_text.append(text)
+            
+            extracted_text = "\n\n".join(pages_text)
+            
+        elif filename.endswith(".txt") or filename.endswith(".md"):
+            extracted_text = file.read().decode("utf-8", errors="ignore")
+        else:
+            return jsonify({"error": "Unsupported file type. Please upload a PDF or TXT file."}), 400
+
+        if not extracted_text.strip():
+            return jsonify({"error": "Could not extract text from document (it may be empty or scanned image without selectable text)."}), 400
+
+        return jsonify({
+            "filename": file.filename,
+            "text": extracted_text,
+            "pageCount": page_count,
+            "wordCount": len(extracted_text.split())
+        })
+
+    except Exception as e:
+        print(f"Document parsing error: {e}")
+        return jsonify({"error": f"Failed to parse document: {str(e)}"}), 500
 
 @app.route("/summarize", methods=["POST"])
 def summarize():

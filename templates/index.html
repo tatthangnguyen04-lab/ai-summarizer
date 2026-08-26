@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Briefly AI - Text Summarizer</title>
+  <title>Briefly AI - Text & PDF Summarizer</title>
   <!-- Tailwind CSS & React via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
@@ -15,7 +15,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useMemo } = React;
+    const { useState, useMemo, useRef } = React;
 
     const SAMPLES = [
       {
@@ -35,11 +35,68 @@
       const [length, setLength] = useState('medium');
       const [tone, setTone] = useState('professional');
       const [loading, setLoading] = useState(false);
+      const [uploading, setUploading] = useState(false);
+      const [fileMeta, setFileMeta] = useState(null);
       const [error, setError] = useState(null);
       const [copied, setCopied] = useState(false);
+      const [isDragging, setIsDragging] = useState(false);
+      const fileInputRef = useRef(null);
 
       const wordCount = useMemo(() => text.trim() ? text.trim().split(/\s+/).length : 0, [text]);
       const summaryWords = useMemo(() => summary.trim() ? summary.trim().split(/\s+/).length : 0, [summary]);
+
+      const handleFileUpload = async (file) => {
+        if (!file) return;
+        setUploading(true);
+        setError(null);
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        try {
+          const res = await fetch('/upload-document', {
+            method: 'POST',
+            body: formData
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to upload and extract document text.');
+          
+          setText(data.text);
+          setFileMeta({
+            name: data.filename,
+            pages: data.pageCount,
+            words: data.wordCount
+          });
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setUploading(false);
+        }
+      };
+
+      const handleDragOver = (e) => {
+        e.preventDefault();
+        setIsDragging(true);
+      };
+
+      const handleDragLeave = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+      };
+
+      const handleDrop = (e) => {
+        e.preventDefault();
+        setIsDragging(false);
+        if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          handleFileUpload(e.dataTransfer.files[0]);
+        }
+      };
+
+      const clearFile = () => {
+        setFileMeta(null);
+        setText('');
+        if (fileInputRef.current) fileInputRef.current.value = '';
+      };
 
       const handleSummarize = async () => {
         if (!text.trim()) return;
@@ -79,7 +136,7 @@
             </div>
             <div className="flex items-center gap-2 text-xs bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded-full text-emerald-400">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              Flask & OpenRouter Active
+              PDF Extraction & LLM Active
             </div>
           </header>
 
@@ -135,12 +192,12 @@
               {/* Input Box */}
               <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 flex flex-col gap-3">
                 <div className="flex items-center justify-between text-xs text-neutral-400">
-                  <span className="font-semibold text-neutral-300">Input Text</span>
+                  <span className="font-semibold text-neutral-300">Input Source</span>
                   <div className="flex gap-2">
                     {SAMPLES.map((s, idx) => (
                       <button
                         key={idx}
-                        onClick={() => setText(s.text)}
+                        onClick={() => { clearFile(); setText(s.text); }}
                         className="bg-neutral-800 hover:bg-neutral-700 px-2 py-0.5 rounded text-[11px] text-neutral-300"
                       >
                         Sample {s.label}
@@ -149,18 +206,73 @@
                   </div>
                 </div>
 
+                {/* PDF Drag and Drop Area */}
+                <input
+                  type="file"
+                  ref={fileInputRef}
+                  onChange={(e) => e.target.files && handleFileUpload(e.target.files[0])}
+                  accept=".pdf,.txt,.md"
+                  className="hidden"
+                />
+
+                {fileMeta ? (
+                  <div className="bg-neutral-950 border border-indigo-500/40 rounded-lg p-3 flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <div className="w-8 h-8 rounded bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
+                        <i className="fa-regular fa-file-pdf text-sm"></i>
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold text-neutral-200 truncate max-w-[200px]">{fileMeta.name}</div>
+                        <div className="text-[11px] text-neutral-400">{fileMeta.pages} page(s) • {fileMeta.words} words parsed</div>
+                      </div>
+                    </div>
+                    <button
+                      onClick={clearFile}
+                      className="text-neutral-400 hover:text-red-400 text-xs p-1"
+                      title="Remove file"
+                    >
+                      <i className="fa-solid fa-xmark"></i>
+                    </button>
+                  </div>
+                ) : (
+                  <div
+                    onDragOver={handleDragOver}
+                    onDragLeave={handleDragLeave}
+                    onDrop={handleDrop}
+                    onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                    className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-all ${
+                      isDragging
+                        ? 'border-indigo-500 bg-indigo-950/20'
+                        : 'border-neutral-800 hover:border-neutral-700 bg-neutral-950/50'
+                    }`}
+                  >
+                    {uploading ? (
+                      <div className="flex items-center justify-center gap-2 text-xs text-indigo-400 py-1">
+                        <i className="fa-solid fa-circle-notch animate-spin"></i>
+                        Extracting text from document...
+                      </div>
+                    ) : (
+                      <div className="text-xs text-neutral-400 flex items-center justify-center gap-2 py-1">
+                        <i className="fa-solid fa-cloud-arrow-up text-neutral-400"></i>
+                        <span>Drop <strong>PDF</strong> or <strong>TXT</strong> here, or <span className="text-indigo-400 underline">browse</span></span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Text Area */}
                 <textarea
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  placeholder="Paste your article, meeting notes, or text here..."
-                  className="w-full flex-1 min-h-[300px] bg-neutral-950 border border-neutral-800 rounded-lg p-4 text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-indigo-500 resize-none font-mono"
+                  placeholder="Or paste your raw text here..."
+                  className="w-full flex-1 min-h-[220px] bg-neutral-950 border border-neutral-800 rounded-lg p-4 text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-indigo-500 resize-none font-mono"
                 />
 
                 <div className="flex items-center justify-between pt-2">
                   <span className="text-xs text-neutral-400">{wordCount} words</span>
                   <button
                     onClick={handleSummarize}
-                    disabled={loading || !text.trim()}
+                    disabled={loading || uploading || !text.trim()}
                     className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-neutral-500 text-white text-sm font-medium px-5 py-2 rounded-lg transition-all flex items-center gap-2"
                   >
                     {loading ? (
