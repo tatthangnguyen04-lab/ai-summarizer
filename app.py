@@ -1,9 +1,10 @@
 import os
 import io
 import re
+import json
 import requests
 from bs4 import BeautifulSoup
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, Response, stream_with_context
 from flask_cors import CORS
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -82,7 +83,6 @@ def scrape_url():
         if not target_url.startswith(("http://", "https://")):
             target_url = "https://" + target_url
 
-        # Standard browser headers
         headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -103,18 +103,15 @@ def scrape_url():
 
         soup = BeautifulSoup(response.text, "html.parser")
 
-        # Strip unneeded elements
         for element in soup(["script", "style", "nav", "header", "footer", "aside", "form", "svg", "noscript", "iframe"]):
             element.decompose()
 
-        # Extract title
         title = ""
         if soup.title and soup.title.string:
             title = soup.title.string.strip()
         elif soup.find("h1"):
             title = soup.find("h1").get_text().strip()
 
-        # Extract paragraphs from main content container
         article_container = soup.find("article") or soup.find("main") or soup.find("body")
 
         paragraphs = []
@@ -147,9 +144,9 @@ def scrape_url():
         print(f"Scraping error: {e}")
         return jsonify({"error": f"Failed to extract article: {str(e)}"}), 500
 
-    
 @app.route("/summarize", methods=["POST"])
 def summarize():
+    """Stream summarized tokens in real-time via Server-Sent Events (SSE)."""
     try:
         data = request.get_json()
         if not data:
@@ -164,26 +161,37 @@ def summarize():
             return jsonify({"error": "No text provided"}), 400
 
         system_instruction = (
-            f"You are a skilled AI text summarizer. "
+            f"You are an expert AI text summarizer. "
             f"Format requirements: {format_type}. "
             f"Length: {length}. "
             f"Tone: {tone}. "
             f"Be precise, clear, and direct."
         )
 
-        response = client.chat.completions.create(
-            model="openrouter/free",
-            messages=[
-                {"role": "system", "content": system_instruction},
-                {"role": "user", "content": f"Summarize the following text:\n\n{text}"}
-            ]
-        )
+        def generate():
+            try:
+                stream = client.chat.completions.create(
+                    model="openrouter/free",
+                    messages=[
+                        {"role": "system", "content": system_instruction},
+                        {"role": "user", "content": f"Summarize the following text:\n\n{text}"}
+                    ],
+                    stream=True
+                )
+                for chunk in stream:
+                    if chunk.choices and len(chunk.choices) > 0:
+                        delta = chunk.choices[0].delta.content
+                        if delta:
+                            yield f"data: {json.dumps({'token': delta})}\n\n"
+                yield "data: [DONE]\n\n"
+            except Exception as stream_err:
+                print(f"Streaming error: {stream_err}")
+                yield f"data: {json.dumps({'error': str(stream_err)})}\n\n"
 
-        summary = response.choices[0].message.content
-        return jsonify({"summary": summary})
+        return Response(stream_with_context(generate()), mimetype="text/event-stream")
 
     except Exception as e:
-        print(f"Error: {e}")
+        print(f"Summarize handler error: {e}")
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
