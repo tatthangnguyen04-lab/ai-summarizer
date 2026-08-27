@@ -10,12 +10,27 @@
   <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js" crossorigin></script>
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    @keyframes blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+    .typing-cursor {
+      display: inline-block;
+      width: 6px;
+      height: 14px;
+      background-color: #6366f1;
+      margin-left: 3px;
+      vertical-align: middle;
+      animation: blink 0.8s infinite;
+    }
+  </style>
 </head>
 <body class="bg-neutral-950 text-neutral-100 min-h-screen font-sans">
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useMemo, useRef } = React;
+    const { useState, useMemo, useRef, useEffect } = React;
 
     const SAMPLES = [
       {
@@ -36,17 +51,41 @@
       const [format, setFormat] = useState('bullets');
       const [length, setLength] = useState('medium');
       const [tone, setTone] = useState('professional');
-      const [loading, setLoading] = useState(false);
+      const [isStreaming, setIsStreaming] = useState(false);
       const [scraping, setScraping] = useState(false);
       const [uploading, setUploading] = useState(false);
       const [sourceMeta, setSourceMeta] = useState(null);
       const [error, setError] = useState(null);
       const [copied, setCopied] = useState(false);
       const [isDragging, setIsDragging] = useState(false);
+      
       const fileInputRef = useRef(null);
+      const queueRef = useRef('');
+      const isDrainingRef = useRef(false);
+      const isStreamDoneRef = useRef(false);
 
       const wordCount = useMemo(() => text.trim() ? text.trim().split(/\s+/).length : 0, [text]);
       const summaryWords = useMemo(() => summary.trim() ? summary.trim().split(/\s+/).length : 0, [summary]);
+
+      // Smooth typewriter draining loop
+      const startDrainingQueue = () => {
+        if (isDrainingRef.current) return;
+        isDrainingRef.current = true;
+
+        const interval = setInterval(() => {
+          if (queueRef.current.length > 0) {
+            // Dynamically adjust speed based on queue size (prevent lag if big chunks arrive)
+            const chunkSize = queueRef.current.length > 100 ? 5 : (queueRef.current.length > 40 ? 3 : 1);
+            const charsToAppend = queueRef.current.slice(0, chunkSize);
+            queueRef.current = queueRef.current.slice(chunkSize);
+            setSummary(prev => prev + charsToAppend);
+          } else if (isStreamDoneRef.current) {
+            clearInterval(interval);
+            isDrainingRef.current = false;
+            setIsStreaming(false);
+          }
+        }, 14); // 14ms per tick = ~70 characters per second smooth flow
+      };
 
       const handleFileUpload = async (file) => {
         if (!file) return;
@@ -130,23 +169,67 @@
         if (fileInputRef.current) fileInputRef.current.value = '';
       };
 
-      const handleSummarize = async () => {
-        if (!text.trim()) return;
-        setLoading(true);
+      const handleSummarizeStream = async () => {
+        if (!text.trim() || isStreaming) return;
+        setIsStreaming(true);
+        setSummary('');
         setError(null);
+        queueRef.current = '';
+        isStreamDoneRef.current = false;
+
+        startDrainingQueue();
+
         try {
           const res = await fetch('/summarize', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text, format, length, tone })
           });
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || 'Summarization failed');
-          setSummary(data.summary);
+
+          if (!res.ok) {
+            const data = await res.json();
+            throw new Error(data.error || 'Summarization request failed');
+          }
+
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder('utf-8');
+          let buffer = '';
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop();
+
+            for (const line of lines) {
+              const trimmed = line.trim();
+              if (trimmed.startsWith('data: ')) {
+                const payload = trimmed.replace('data: ', '').trim();
+                if (payload === '[DONE]') {
+                  isStreamDoneRef.current = true;
+                  break;
+                }
+                try {
+                  const parsed = JSON.parse(payload);
+                  if (parsed.token) {
+                    queueRef.current += parsed.token;
+                  }
+                  if (parsed.error) {
+                    throw new Error(parsed.error);
+                  }
+                } catch (jsonErr) {
+                  // Ignore SSE formatting lines
+                }
+              }
+            }
+          }
+          isStreamDoneRef.current = true;
         } catch (err) {
           setError(err.message);
-        } finally {
-          setLoading(false);
+          setIsStreaming(false);
+          isStreamDoneRef.current = true;
         }
       };
 
@@ -168,7 +251,7 @@
             </div>
             <div className="flex items-center gap-2 text-xs bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded-full text-emerald-400">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              Web Scraper, PDF & LLM Engine Active
+              Smooth Typewriter Token Streamer Active
             </div>
           </header>
 
@@ -275,7 +358,7 @@
                       value={urlInput}
                       onChange={(e) => setUrlInput(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleScrapeUrl()}
-                      placeholder="Paste article URL (e.g., https://en.wikipedia.org/wiki/Artificial_intelligence)"
+                      placeholder="Paste article URL (e.g. https://en.wikipedia.org/wiki/Artificial_intelligence)"
                       className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-indigo-500"
                     />
                     <button
@@ -367,14 +450,14 @@
                 <div className="flex items-center justify-between pt-2">
                   <span className="text-xs text-neutral-400">{wordCount} words</span>
                   <button
-                    onClick={handleSummarize}
-                    disabled={loading || scraping || uploading || !text.trim()}
+                    onClick={handleSummarizeStream}
+                    disabled={isStreaming || scraping || uploading || !text.trim()}
                     className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-neutral-500 text-white text-sm font-medium px-5 py-2 rounded-lg transition-all flex items-center gap-2"
                   >
-                    {loading ? (
+                    {isStreaming ? (
                       <>
                         <i className="fa-solid fa-circle-notch animate-spin"></i>
-                        Summarizing...
+                        Streaming...
                       </>
                     ) : (
                       <>
@@ -402,13 +485,16 @@
                   )}
                 </div>
 
-                <div className="flex-1 min-h-[300px] bg-neutral-950 border border-neutral-800 rounded-lg p-4 text-sm text-neutral-200 whitespace-pre-wrap overflow-y-auto">
+                <div className="flex-1 min-h-[300px] bg-neutral-950 border border-neutral-800 rounded-lg p-4 text-sm text-neutral-200 whitespace-pre-wrap overflow-y-auto font-sans leading-relaxed">
                   {summary ? (
-                    summary
+                    <>
+                      {summary}
+                      {isStreaming && <span className="typing-cursor"></span>}
+                    </>
                   ) : (
                     <div className="h-full flex flex-col items-center justify-center text-neutral-500 text-xs py-16">
                       <i className="fa-regular fa-file-lines text-3xl mb-2 text-neutral-600"></i>
-                      Summary will appear here
+                      Summary will stream live here
                     </div>
                   )}
                 </div>
