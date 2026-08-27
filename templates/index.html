@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Briefly AI - Text & PDF Summarizer</title>
+  <title>Briefly AI - Text, PDF & Web Article Summarizer</title>
   <!-- Tailwind CSS & React via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
@@ -19,24 +19,27 @@
 
     const SAMPLES = [
       {
-        label: "Technology",
+        label: "Tech Sample",
         text: "Quantum computing represents a fundamental shift in computation. Unlike classical computers that store bits as strictly 0 or 1, quantum computers leverage qubits in superposition. This allows quantum algorithms to solve vast combinatorial problems exponentially faster, revolutionizing fields like drug discovery, cryptography, and molecular simulation. However, maintaining qubit coherence near absolute zero remains an active engineering hurdle."
       },
       {
-        label: "Business",
+        label: "Business Sample",
         text: "In Q3 2026, enterprise revenue rose 18.4% year-over-year to $412 million, driven by accelerated cloud infrastructure adoption. Operating margins expanded by 210 basis points, and free cash flow reached $104 million with zero debt maturities prior to 2029. Management raised full-year guidance from $1.58B to $1.64B."
       }
     ];
 
     function App() {
+      const [inputMode, setInputMode] = useState('text'); // 'text' | 'file' | 'url'
       const [text, setText] = useState('');
+      const [urlInput, setUrlInput] = useState('');
       const [summary, setSummary] = useState('');
       const [format, setFormat] = useState('bullets');
       const [length, setLength] = useState('medium');
       const [tone, setTone] = useState('professional');
       const [loading, setLoading] = useState(false);
+      const [scraping, setScraping] = useState(false);
       const [uploading, setUploading] = useState(false);
-      const [fileMeta, setFileMeta] = useState(null);
+      const [sourceMeta, setSourceMeta] = useState(null);
       const [error, setError] = useState(null);
       const [copied, setCopied] = useState(false);
       const [isDragging, setIsDragging] = useState(false);
@@ -62,15 +65,42 @@
           if (!res.ok) throw new Error(data.error || 'Failed to upload and extract document text.');
           
           setText(data.text);
-          setFileMeta({
-            name: data.filename,
-            pages: data.pageCount,
-            words: data.wordCount
+          setSourceMeta({
+            type: 'file',
+            title: data.filename,
+            detail: `${data.pageCount} page(s) • ${data.wordCount} words`
           });
         } catch (err) {
           setError(err.message);
         } finally {
           setUploading(false);
+        }
+      };
+
+      const handleScrapeUrl = async (targetUrl = urlInput) => {
+        if (!targetUrl.trim()) return;
+        setScraping(true);
+        setError(null);
+
+        try {
+          const res = await fetch('/scrape-url', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: targetUrl })
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Failed to scrape webpage.');
+
+          setText(data.text);
+          setSourceMeta({
+            type: 'url',
+            title: data.title,
+            detail: `${data.url} • ${data.wordCount} words`
+          });
+        } catch (err) {
+          setError(err.message);
+        } finally {
+          setScraping(false);
         }
       };
 
@@ -88,13 +118,15 @@
         e.preventDefault();
         setIsDragging(false);
         if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+          setInputMode('file');
           handleFileUpload(e.dataTransfer.files[0]);
         }
       };
 
-      const clearFile = () => {
-        setFileMeta(null);
+      const clearSource = () => {
+        setSourceMeta(null);
         setText('');
+        setUrlInput('');
         if (fileInputRef.current) fileInputRef.current.value = '';
       };
 
@@ -136,7 +168,7 @@
             </div>
             <div className="flex items-center gap-2 text-xs bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded-full text-emerald-400">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-              PDF Extraction & LLM Active
+              Web Scraper, PDF & LLM Engine Active
             </div>
           </header>
 
@@ -191,72 +223,136 @@
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
               {/* Input Box */}
               <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 flex flex-col gap-3">
-                <div className="flex items-center justify-between text-xs text-neutral-400">
-                  <span className="font-semibold text-neutral-300">Input Source</span>
-                  <div className="flex gap-2">
-                    {SAMPLES.map((s, idx) => (
-                      <button
-                        key={idx}
-                        onClick={() => { clearFile(); setText(s.text); }}
-                        className="bg-neutral-800 hover:bg-neutral-700 px-2 py-0.5 rounded text-[11px] text-neutral-300"
-                      >
-                        Sample {s.label}
-                      </button>
-                    ))}
+                {/* Source Mode Tabs */}
+                <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+                  <div className="flex gap-1 bg-neutral-950 p-1 rounded-lg border border-neutral-800">
+                    <button
+                      onClick={() => setInputMode('text')}
+                      className={`px-3 py-1 text-xs rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+                        inputMode === 'text' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-neutral-200'
+                      }`}
+                    >
+                      <i className="fa-solid fa-align-left text-[11px]"></i> Text
+                    </button>
+                    <button
+                      onClick={() => setInputMode('file')}
+                      className={`px-3 py-1 text-xs rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+                        inputMode === 'file' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-neutral-200'
+                      }`}
+                    >
+                      <i className="fa-regular fa-file-pdf text-[11px]"></i> Document
+                    </button>
+                    <button
+                      onClick={() => setInputMode('url')}
+                      className={`px-3 py-1 text-xs rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+                        inputMode === 'url' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-neutral-200'
+                      }`}
+                    >
+                      <i className="fa-solid fa-globe text-[11px]"></i> URL / Article
+                    </button>
                   </div>
+
+                  {inputMode === 'text' && (
+                    <div className="flex gap-2">
+                      {SAMPLES.map((s, idx) => (
+                        <button
+                          key={idx}
+                          onClick={() => { clearSource(); setText(s.text); }}
+                          className="bg-neutral-800 hover:bg-neutral-700 px-2 py-0.5 rounded text-[11px] text-neutral-300"
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
-                {/* PDF Drag and Drop Area */}
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  onChange={(e) => e.target.files && handleFileUpload(e.target.files[0])}
-                  accept=".pdf,.txt,.md"
-                  className="hidden"
-                />
+                {/* URL Input Form */}
+                {inputMode === 'url' && (
+                  <div className="flex gap-2">
+                    <input
+                      type="url"
+                      value={urlInput}
+                      onChange={(e) => setUrlInput(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleScrapeUrl()}
+                      placeholder="Paste article URL (e.g., https://en.wikipedia.org/wiki/Artificial_intelligence)"
+                      className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-indigo-500"
+                    />
+                    <button
+                      onClick={() => handleScrapeUrl()}
+                      disabled={scraping || !urlInput.trim()}
+                      className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-neutral-500 text-white text-xs font-medium px-4 py-2 rounded-lg transition-all flex items-center gap-1.5"
+                    >
+                      {scraping ? (
+                        <>
+                          <i className="fa-solid fa-circle-notch animate-spin"></i>
+                          Fetching...
+                        </>
+                      ) : (
+                        <>
+                          <i className="fa-solid fa-download"></i>
+                          Extract
+                        </>
+                      )}
+                    </button>
+                  </div>
+                )}
 
-                {fileMeta ? (
-                  <div className="bg-neutral-950 border border-indigo-500/40 rounded-lg p-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded bg-indigo-500/20 text-indigo-400 flex items-center justify-center">
-                        <i className="fa-regular fa-file-pdf text-sm"></i>
+                {/* PDF Drag & Drop Area */}
+                {inputMode === 'file' && (
+                  <>
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      onChange={(e) => e.target.files && handleFileUpload(e.target.files[0])}
+                      accept=".pdf,.txt,.md"
+                      className="hidden"
+                    />
+                    <div
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onDrop={handleDrop}
+                      onClick={() => fileInputRef.current && fileInputRef.current.click()}
+                      className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-all ${
+                        isDragging
+                          ? 'border-indigo-500 bg-indigo-950/20'
+                          : 'border-neutral-800 hover:border-neutral-700 bg-neutral-950/50'
+                      }`}
+                    >
+                      {uploading ? (
+                        <div className="flex items-center justify-center gap-2 text-xs text-indigo-400 py-1">
+                          <i className="fa-solid fa-circle-notch animate-spin"></i>
+                          Extracting text from document...
+                        </div>
+                      ) : (
+                        <div className="text-xs text-neutral-400 flex items-center justify-center gap-2 py-1">
+                          <i className="fa-solid fa-cloud-arrow-up text-neutral-400"></i>
+                          <span>Drop <strong>PDF</strong> or <strong>TXT</strong> here, or <span className="text-indigo-400 underline">browse</span></span>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                )}
+
+                {/* Source Badge if parsed */}
+                {sourceMeta && (
+                  <div className="bg-neutral-950 border border-indigo-500/40 rounded-lg p-2.5 flex items-center justify-between">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-xs">
+                        <i className={sourceMeta.type === 'url' ? 'fa-solid fa-globe' : 'fa-regular fa-file-pdf'}></i>
                       </div>
                       <div>
-                        <div className="text-xs font-semibold text-neutral-200 truncate max-w-[200px]">{fileMeta.name}</div>
-                        <div className="text-[11px] text-neutral-400">{fileMeta.pages} page(s) • {fileMeta.words} words parsed</div>
+                        <div className="text-xs font-semibold text-neutral-200 truncate max-w-[220px]">{sourceMeta.title}</div>
+                        <div className="text-[10px] text-neutral-400 truncate max-w-[220px]">{sourceMeta.detail}</div>
                       </div>
                     </div>
                     <button
-                      onClick={clearFile}
+                      onClick={clearSource}
                       className="text-neutral-400 hover:text-red-400 text-xs p-1"
-                      title="Remove file"
+                      title="Clear source"
                     >
                       <i className="fa-solid fa-xmark"></i>
                     </button>
-                  </div>
-                ) : (
-                  <div
-                    onDragOver={handleDragOver}
-                    onDragLeave={handleDragLeave}
-                    onDrop={handleDrop}
-                    onClick={() => fileInputRef.current && fileInputRef.current.click()}
-                    className={`border-2 border-dashed rounded-lg p-4 text-center cursor-pointer transition-all ${
-                      isDragging
-                        ? 'border-indigo-500 bg-indigo-950/20'
-                        : 'border-neutral-800 hover:border-neutral-700 bg-neutral-950/50'
-                    }`}
-                  >
-                    {uploading ? (
-                      <div className="flex items-center justify-center gap-2 text-xs text-indigo-400 py-1">
-                        <i className="fa-solid fa-circle-notch animate-spin"></i>
-                        Extracting text from document...
-                      </div>
-                    ) : (
-                      <div className="text-xs text-neutral-400 flex items-center justify-center gap-2 py-1">
-                        <i className="fa-solid fa-cloud-arrow-up text-neutral-400"></i>
-                        <span>Drop <strong>PDF</strong> or <strong>TXT</strong> here, or <span className="text-indigo-400 underline">browse</span></span>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -264,7 +360,7 @@
                 <textarea
                   value={text}
                   onChange={(e) => setText(e.target.value)}
-                  placeholder="Or paste your raw text here..."
+                  placeholder="Paste text, upload a document, or extract a URL above..."
                   className="w-full flex-1 min-h-[220px] bg-neutral-950 border border-neutral-800 rounded-lg p-4 text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-indigo-500 resize-none font-mono"
                 />
 
@@ -272,7 +368,7 @@
                   <span className="text-xs text-neutral-400">{wordCount} words</span>
                   <button
                     onClick={handleSummarize}
-                    disabled={loading || uploading || !text.trim()}
+                    disabled={loading || scraping || uploading || !text.trim()}
                     className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-neutral-500 text-white text-sm font-medium px-5 py-2 rounded-lg transition-all flex items-center gap-2"
                   >
                     {loading ? (
