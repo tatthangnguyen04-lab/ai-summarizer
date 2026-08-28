@@ -4,9 +4,13 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Briefly AI - Text, PDF & Web Article Summarizer</title>
-  <!-- Sleek Indigo Sparkle Favicon -->
-  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='24' fill='%234f46e5'/><path d='M50 20 L56 38 L74 44 L56 50 L50 68 L44 50 L26 44 L44 38 Z' fill='%23ffffff'/><circle cx='70' cy='25' r='4' fill='%23a5b4fc'/><circle cx='30' cy='65' r='3' fill='%23a5b4fc'/></svg>">
-  
+    <!-- Sleek Indigo Sparkle Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,
+  <svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'>
+    <rect width='100' height='100' rx='24' fill='%234f46e5'/>
+    <path d='M50 20 L56 38 L74 44 L56 50 L50 68 L44 50 L26 44 L44 38 Z' fill='%23ffffff'/>
+    <circle cx='70' cy='25' r='4' fill='%23a5b4fc'/><circle cx='30' cy='65' r='3' fill='%23a5b4fc'/>
+  </svg>">
   <!-- Tailwind CSS & React via CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
   <script src="https://unpkg.com/react@18/umd/react.development.js" crossorigin></script>
@@ -33,7 +37,7 @@
   <div id="root"></div>
 
   <script type="text/babel">
-    const { useState, useMemo, useRef } = React;
+    const { useState, useMemo, useRef, useEffect } = React;
 
     const SAMPLES = [
       {
@@ -70,12 +74,14 @@
       const wordCount = useMemo(() => text.trim() ? text.trim().split(/\s+/).length : 0, [text]);
       const summaryWords = useMemo(() => summary.trim() ? summary.trim().split(/\s+/).length : 0, [summary]);
 
+      // Smooth typewriter draining loop
       const startDrainingQueue = () => {
         if (isDrainingRef.current) return;
         isDrainingRef.current = true;
 
         const interval = setInterval(() => {
           if (queueRef.current.length > 0) {
+            // Dynamically adjust speed based on queue size (prevent lag if big chunks arrive)
             const chunkSize = queueRef.current.length > 100 ? 5 : (queueRef.current.length > 40 ? 3 : 1);
             const charsToAppend = queueRef.current.slice(0, chunkSize);
             queueRef.current = queueRef.current.slice(chunkSize);
@@ -85,7 +91,7 @@
             isDrainingRef.current = false;
             setIsStreaming(false);
           }
-        }, 14);
+        }, 14); // 14ms per tick = ~70 characters per second smooth flow
       };
 
       const handleFileUpload = async (file) => {
@@ -221,7 +227,7 @@
                     throw new Error(parsed.error);
                   }
                 } catch (jsonErr) {
-                  // Ignore SSE lines
+                  // Ignore SSE formatting lines
                 }
               }
             }
@@ -243,59 +249,57 @@
       return (
         <div className="min-h-screen flex flex-col">
           {/* Header */}
-          <header className="border-b border-neutral-800 bg-neutral-900/90 px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-2.5">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white shrink-0">
+          <header className="border-b border-neutral-800 bg-neutral-900/90 px-6 py-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white">
                 <i className="fa-solid fa-wand-magic-sparkles text-sm"></i>
               </div>
               <h1 className="text-lg font-bold tracking-tight text-white">Briefly AI</h1>
             </div>
             <div className="flex items-center gap-2 text-xs bg-neutral-900 border border-neutral-800 px-3 py-1.5 rounded-full text-emerald-400">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0"></span>
-              <span className="truncate">Active • Mobile Layout Fixed</span>
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              Smooth Typewriter Token Streamer Active
             </div>
           </header>
 
           {/* Main Content */}
-          <main className="max-w-6xl w-full mx-auto p-4 sm:p-6 flex-1 flex flex-col gap-4 sm:gap-6">
+          <main className="max-w-6xl w-full mx-auto p-6 flex-1 flex flex-col gap-6">
             {/* Format & Controls Bar */}
-            <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-3.5 sm:p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3 sm:gap-4">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-xs font-semibold text-neutral-400 uppercase tracking-wider">Format:</span>
-                <div className="flex flex-wrap gap-1.5">
-                  {['bullets', 'tldr', 'executive'].map((f) => (
-                    <button
-                      key={f}
-                      onClick={() => setFormat(f)}
-                      className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-all ${
-                        format === f ? 'bg-indigo-600 text-white shadow-sm' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
-                      }`}
-                    >
-                      {f === 'bullets' ? 'Bullets' : f.toUpperCase()}
-                    </button>
-                  ))}
-                </div>
+            <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-neutral-400 uppercase">Format:</span>
+                {['bullets', 'tldr', 'executive'].map((f) => (
+                  <button
+                    key={f}
+                    onClick={() => setFormat(f)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-medium capitalize transition-all ${
+                      format === f ? 'bg-indigo-600 text-white' : 'bg-neutral-800 text-neutral-300 hover:bg-neutral-700'
+                    }`}
+                  >
+                    {f === 'bullets' ? 'Bullet Points' : f.toUpperCase()}
+                  </button>
+                ))}
               </div>
 
-              <div className="flex items-center gap-3 sm:gap-4 self-start md:self-auto">
-                <div className="flex items-center gap-1.5 text-xs">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2 text-xs">
                   <span className="text-neutral-400">Length:</span>
                   <select
                     value={length}
                     onChange={(e) => setLength(e.target.value)}
-                    className="bg-neutral-800 border border-neutral-700 text-neutral-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-indigo-500"
+                    className="bg-neutral-800 border border-neutral-700 text-neutral-200 rounded px-2 py-1"
                   >
                     <option value="short">Short</option>
                     <option value="medium">Medium</option>
                     <option value="detailed">Detailed</option>
                   </select>
                 </div>
-                <div className="flex items-center gap-1.5 text-xs">
+                <div className="flex items-center gap-2 text-xs">
                   <span className="text-neutral-400">Tone:</span>
                   <select
                     value={tone}
                     onChange={(e) => setTone(e.target.value)}
-                    className="bg-neutral-800 border border-neutral-700 text-neutral-200 rounded px-2 py-1 text-xs focus:outline-none focus:border-indigo-500"
+                    className="bg-neutral-800 border border-neutral-700 text-neutral-200 rounded px-2 py-1"
                   >
                     <option value="professional">Professional</option>
                     <option value="casual">Casual</option>
@@ -306,46 +310,45 @@
             </div>
 
             {/* Input & Output Columns */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 flex-1">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1">
               {/* Input Box */}
-              <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 sm:p-5 flex flex-col gap-3">
-                {/* Source Mode Tabs & Sample Shortcuts */}
-                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 border-b border-neutral-800 pb-3">
-                  <div className="flex bg-neutral-950 p-1 rounded-lg border border-neutral-800 w-full sm:w-auto">
+              <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 flex flex-col gap-3">
+                {/* Source Mode Tabs */}
+                <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
+                  <div className="flex gap-1 bg-neutral-950 p-1 rounded-lg border border-neutral-800">
                     <button
                       onClick={() => setInputMode('text')}
-                      className={`flex-1 sm:flex-initial px-3 py-1 text-xs rounded-md font-medium transition-colors flex items-center justify-center gap-1.5 ${
-                        inputMode === 'text' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-neutral-200'
+                      className={`px-3 py-1 text-xs rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+                        inputMode === 'text' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-neutral-200'
                       }`}
                     >
                       <i className="fa-solid fa-align-left text-[11px]"></i> Text
                     </button>
                     <button
                       onClick={() => setInputMode('file')}
-                      className={`flex-1 sm:flex-initial px-3 py-1 text-xs rounded-md font-medium transition-colors flex items-center justify-center gap-1.5 ${
-                        inputMode === 'file' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-neutral-200'
+                      className={`px-3 py-1 text-xs rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+                        inputMode === 'file' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-neutral-200'
                       }`}
                     >
-                      <i className="fa-regular fa-file-pdf text-[11px]"></i> Doc
+                      <i className="fa-regular fa-file-pdf text-[11px]"></i> Document
                     </button>
                     <button
                       onClick={() => setInputMode('url')}
-                      className={`flex-1 sm:flex-initial px-3 py-1 text-xs rounded-md font-medium transition-colors flex items-center justify-center gap-1.5 ${
-                        inputMode === 'url' ? 'bg-neutral-800 text-white shadow-sm' : 'text-neutral-400 hover:text-neutral-200'
+                      className={`px-3 py-1 text-xs rounded-md font-medium transition-colors flex items-center gap-1.5 ${
+                        inputMode === 'url' ? 'bg-neutral-800 text-white' : 'text-neutral-400 hover:text-neutral-200'
                       }`}
                     >
-                      <i className="fa-solid fa-globe text-[11px]"></i> URL
+                      <i className="fa-solid fa-globe text-[11px]"></i> URL / Article
                     </button>
                   </div>
 
                   {inputMode === 'text' && (
-                    <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0">
-                      <span className="text-[11px] text-neutral-500 hidden sm:inline">Try:</span>
+                    <div className="flex gap-2">
                       {SAMPLES.map((s, idx) => (
                         <button
                           key={idx}
                           onClick={() => { clearSource(); setText(s.text); }}
-                          className="bg-neutral-800 hover:bg-neutral-700 px-2.5 py-1 rounded text-[11px] text-neutral-300 whitespace-nowrap transition-colors"
+                          className="bg-neutral-800 hover:bg-neutral-700 px-2 py-0.5 rounded text-[11px] text-neutral-300"
                         >
                           {s.label}
                         </button>
@@ -362,13 +365,13 @@
                       value={urlInput}
                       onChange={(e) => setUrlInput(e.target.value)}
                       onKeyDown={(e) => e.key === 'Enter' && handleScrapeUrl()}
-                      placeholder="Paste article URL (e.g. https://en.wikipedia.org/...)"
+                      placeholder="Paste article URL (e.g. https://en.wikipedia.org/wiki/Artificial_intelligence)"
                       className="flex-1 bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-xs text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-indigo-500"
                     />
                     <button
                       onClick={() => handleScrapeUrl()}
                       disabled={scraping || !urlInput.trim()}
-                      className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-neutral-500 text-white text-xs font-medium px-3.5 py-2 rounded-lg transition-all flex items-center gap-1.5 shrink-0"
+                      className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-neutral-500 text-white text-xs font-medium px-4 py-2 rounded-lg transition-all flex items-center gap-1.5"
                     >
                       {scraping ? (
                         <>
@@ -414,7 +417,7 @@
                       ) : (
                         <div className="text-xs text-neutral-400 flex items-center justify-center gap-2 py-1">
                           <i className="fa-solid fa-cloud-arrow-up text-neutral-400"></i>
-                          <span>Drop <strong>PDF</strong> / <strong>TXT</strong> or <span className="text-indigo-400 underline">browse</span></span>
+                          <span>Drop <strong>PDF</strong> or <strong>TXT</strong> here, or <span className="text-indigo-400 underline">browse</span></span>
                         </div>
                       )}
                     </div>
@@ -424,18 +427,18 @@
                 {/* Source Badge if parsed */}
                 {sourceMeta && (
                   <div className="bg-neutral-950 border border-indigo-500/40 rounded-lg p-2.5 flex items-center justify-between">
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-7 h-7 rounded bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-xs shrink-0">
+                    <div className="flex items-center gap-2.5">
+                      <div className="w-7 h-7 rounded bg-indigo-500/20 text-indigo-400 flex items-center justify-center text-xs">
                         <i className={sourceMeta.type === 'url' ? 'fa-solid fa-globe' : 'fa-regular fa-file-pdf'}></i>
                       </div>
-                      <div className="truncate">
-                        <div className="text-xs font-semibold text-neutral-200 truncate">{sourceMeta.title}</div>
-                        <div className="text-[10px] text-neutral-400 truncate">{sourceMeta.detail}</div>
+                      <div>
+                        <div className="text-xs font-semibold text-neutral-200 truncate max-w-[220px]">{sourceMeta.title}</div>
+                        <div className="text-[10px] text-neutral-400 truncate max-w-[220px]">{sourceMeta.detail}</div>
                       </div>
                     </div>
                     <button
                       onClick={clearSource}
-                      className="text-neutral-400 hover:text-red-400 text-xs p-1 ml-2 shrink-0"
+                      className="text-neutral-400 hover:text-red-400 text-xs p-1"
                       title="Clear source"
                     >
                       <i className="fa-solid fa-xmark"></i>
@@ -448,7 +451,7 @@
                   value={text}
                   onChange={(e) => setText(e.target.value)}
                   placeholder="Paste text, upload a document, or extract a URL above..."
-                  className="w-full flex-1 min-h-[180px] sm:min-h-[220px] bg-neutral-950 border border-neutral-800 rounded-lg p-3.5 sm:p-4 text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-indigo-500 resize-none font-mono"
+                  className="w-full flex-1 min-h-[220px] bg-neutral-950 border border-neutral-800 rounded-lg p-4 text-sm text-neutral-200 placeholder-neutral-500 focus:outline-none focus:border-indigo-500 resize-none font-mono"
                 />
 
                 <div className="flex items-center justify-between pt-2">
@@ -456,7 +459,7 @@
                   <button
                     onClick={handleSummarizeStream}
                     disabled={isStreaming || scraping || uploading || !text.trim()}
-                    className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-neutral-500 text-white text-sm font-medium px-4 sm:px-5 py-2 rounded-lg transition-all flex items-center gap-2"
+                    className="bg-indigo-600 hover:bg-indigo-500 disabled:bg-neutral-800 disabled:text-neutral-500 text-white text-sm font-medium px-5 py-2 rounded-lg transition-all flex items-center gap-2"
                   >
                     {isStreaming ? (
                       <>
@@ -475,7 +478,7 @@
               </div>
 
               {/* Output Box */}
-              <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-4 sm:p-5 flex flex-col gap-3">
+              <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-5 flex flex-col gap-3">
                 <div className="flex items-center justify-between text-xs text-neutral-400">
                   <span className="font-semibold text-neutral-300">AI Summary</span>
                   {summary && (
@@ -489,14 +492,14 @@
                   )}
                 </div>
 
-                <div className="flex-1 min-h-[220px] sm:min-h-[300px] bg-neutral-950 border border-neutral-800 rounded-lg p-3.5 sm:p-4 text-sm text-neutral-200 whitespace-pre-wrap overflow-y-auto font-sans leading-relaxed">
+                <div className="flex-1 min-h-[300px] bg-neutral-950 border border-neutral-800 rounded-lg p-4 text-sm text-neutral-200 whitespace-pre-wrap overflow-y-auto font-sans leading-relaxed">
                   {summary ? (
                     <>
                       {summary}
                       {isStreaming && <span className="typing-cursor"></span>}
                     </>
                   ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-neutral-500 text-xs py-12 sm:py-16">
+                    <div className="h-full flex flex-col items-center justify-center text-neutral-500 text-xs py-16">
                       <i className="fa-regular fa-file-lines text-3xl mb-2 text-neutral-600"></i>
                       Summary will stream live here
                     </div>
